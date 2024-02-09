@@ -1,0 +1,2 @@
+"0","dem <- rast(""SampleData//NLCD2000_DEM.tif"")"
+"0","plot(dem)"

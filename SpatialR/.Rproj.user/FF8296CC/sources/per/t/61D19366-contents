@@ -1,0 +1,178 @@
+---
+title: "GeoSpatial R"
+author: "Matthew L. Sisk"
+format: html
+editor: visual
+---
+
+## Installing Packages
+
+```{r}
+library(sf)
+library(terra)
+library(tidyverse)
+library(leaflet)
+
+```
+
+Loading spatial data in R is relatively simple, but like many things in R you have multiple options. Until recently, most spatial data in R was handled using the *sp* package to represent the different types of spatial data. There is now an additional option: the *sf* package, which is designed to be tidyverse complaint and more directly human readable. Recently, it was announced that *sp* will no longer be maintained, but you should be aware of it in case you find old tutorials online.
+
+To load a shapefile, just use st_read()
+
+```{r opening a shapefile}
+districts <- st_read("SampleData\\City_Council_Districts.shp")  
+```
+
+When we have loaded the shapefile, it gives some basic information about the number of features, the number of fields and the type of data. Remember that the information in the table is separate from the points that make up the feature. This is a polygon layer. Unlike the *sp* model, in sf, the geometry is simply a column in the tibble/data frame.
+
+```{r}
+districts[1,]$geometry
+```
+
+### Loading spatial data from a table
+
+Often, you will not get spatial data as part of an existing shapefile. You may instead get a table with latitude and longitude coordinates (Or street addresses, which we will get to in a different demonstration). Hear, let's load a table that has latitude and longitude coordinates
+
+```{r opencsv}
+facilities.points <- read.csv("SampleData/Public_Facilities.csv")
+```
+
+Now, in order to covert this into something we can map, we to define it using sf, we use tidy pipes with commands to convert it to sf and set the coordinate reference system. The number (4326) is a code for the coordinate system in the EPSG, a registry of coordinate systems for geographic data. In this case, 4326 corresponds to a latitude and longitude system using the most common model of the earth's surface.
+
+```{r makespatial}
+facilities.spatial <- facilities.points %>% #projecting the table as an sf and setting the coordinate system
+  st_as_sf(coords = c("Lon","Lat")) %>% 
+  st_set_crs(value = 4326) 
+
+```
+
+## Creating Static Maps
+
+Once we have spatial data loaded in R, creating maps is a good next step. We can just use the base R plot to create one, but this is pretty basic. With sf, you want to explicitly call the geometry column.
+
+```{r plot}
+plot(districts$geometry)
+```
+
+We can now use the same sort of syntax we would with a normal ggplot to create maps. Note that we use *geom_sf()* to load most spatial data. This is a wrapper for other geom functions (like geom_point() or geom_polygon())
+
+```{r}
+ggplot() +
+  geom_sf(data = districts)
+```
+
+We can now color the map based of off the district.
+
+```{r}
+ggplot() +
+  geom_sf(data = districts, aes(fill = Dist))
+```
+
+We can now add other layers just like we would in normal ggplot. The *show.legend* variable can either be T/F or set what type of geometry to use in the legend. Here, we want these to be points. This does add points to the polygon colors, which we could then fix with manually changes the aes
+
+```{r}
+ggplot() +
+  geom_sf(data = districts, aes(fill = Dist))+
+  geom_sf(data = facilities.spatial, aes(col = POPL_TYPE), show.legend = "point") +
+  guides(fill = guide_legend(override.aes = list(colour = NA)))
+```
+
+### Loading Raster Data
+
+Raster data are loaded through the terra package. It can load a single band or a multiband image.
+
+```{r raster}
+dem <- rast("SampleData//NLCD2000_DEM.tif")
+plot(dem)
+
+
+```
+
+Multiband:
+
+```{r}
+sat.image <- rast("SampleData/NLCD2000_multi.tif")
+plotRGB(sat.image)
+```
+
+plotting with different band combinations
+
+```{r}
+sat.image <- rast("SampleData/NLCD2000_multi.tif")
+plotRGB(sat.image, r = 4, g = 2, b = 1)
+```
+
+## Using Leaflet for dynamic maps
+
+This is a brief overview of using the leaflet engine for dynamic maps
+
+Leaflet is an open-source javascript library used for making dynamic web maps. It is used throughout the web as an easy way to create interactive maps using a variety of different data types. Here we will work with the R packages used for creating leaflet modules.
+
+At its most basic, leaflet needs an initializing call to leaflet(), one or more basemaps to be added with addTiles() or addProvidorTiles() and then you can add anything else before finally printing the leaflet object to create it. Here we are using the pipe syntax so the initial leaflet() call is also serving to print it. Features can be added with from sf, sp, raster or data.frame objects.
+
+```{r basic leaflet}
+leaflet()  %>%
+  addTiles()  %>%
+  addMarkers(data = facilities.spatial)
+```
+
+These are the most basic type of marker, but it is easy to customize these as well. The easiest thing is to create a popup with more information when you click on a marker. The format for this is html, so you can either just reference a field in the dataframe, or you can create a new string field with html and use that.
+
+```{r popup}
+leaflet()  %>%
+  addTiles()  %>%
+  addMarkers(data = facilities.spatial, popup = ~POPL_NAME)
+```
+
+or you can create a new string field with html and use that.
+
+```{r popup2}
+facilities.spatial$popup <- paste("<b>",facilities.spatial$POPL_NAME,"</b><br>",
+                                  "Type: ",facilities.spatial$POPL_TYPE,"<br>",
+                                  "Phone: ",facilities.spatial$POPL_PHONE,sep ="")
+leaflet()  %>%
+  addTiles()  %>%
+  addMarkers(data = facilities.spatial, popup = ~popup)
+```
+
+We can also change it so the markers are circles and control the color and size more directly. The base addMarkers() does not have a lot of customization options (although you can set icons on them). They also tend to overlap each other, so many maps make use of the alternate addCircleMarkers, which will let you customoze the size, opacity and color.
+
+```{r circleMarkers}
+pal <- colorFactor(palette = 'Set1', domain =facilities.spatial$POPL_TYPE)
+
+leaflet()  %>%
+  addTiles()  %>%
+  addCircleMarkers(data = facilities.spatial, popup = ~popup, color = ~pal(POPL_TYPE), stroke = 0, fillOpacity = 1, radius = 4)
+```
+
+Here, I used the colorFactor function to use a preset colorset, but you could also set them manually with something like palette = c("green", "yellow", "orange"). To see all of the presets in RColorBrewer, run RColorBrewer::display.brewer.all() in the console.
+
+To find more about different colors you may want to use for maps (and to test for accessibility), you can check out the website that serves as the basis for the RColorBrewer package, [ColorBrewer](http://colorbrewer2.org) . This will let you test many of the palettes without having to load them into your maps and provides hex codes you can use directly in your palettes. Plus, ColorBrewer was developed by the researcher Cynthia Brewer, which is grade-a tool naming!
+
+### Basemap Tiles
+
+We also have the option to use a wide variety of different basemaps beyond the default OpenStreetMap one by using addProviderTiles in place of addTiles. Then we can use the *providors* list that comes with the leaflet package to reference a wide variety of different tilesets. For example, the is the base imagery layer from ESRI.
+
+```{r provider1}
+leaflet()  %>%
+  addProviderTiles(providers$Esri.WorldImagery)  %>%
+  addCircleMarkers(data = facilities.spatial, popup = ~popup, color = ~pal(POPL_TYPE), stroke = 0, fillOpacity = 1, radius = 4)
+```
+
+You can find a list of all of the available provider tiles here: [Leaflet Provider Demo](https://leaflet-extras.github.io/leaflet-providers/preview/). Some may require registration and an API key, but all of them should be free to use for small-scale non-commercial uses. Just copy the provider name and paste it after the providers\$ image: ![](images/Provider.png)
+
+# Grouping layers
+
+We also have the ability in leaflet to interactively turn layers off and on by assigning them to groups and then using the Layer Control options. baseGroups will allow one to be selected, which overlayGroups will allow you to turn multiple layers off and on.
+
+```{r layers1}
+leaflet()  %>%
+  addTiles(group = "Basic")  %>%
+  addProviderTiles(providers$Esri.NatGeoWorldMap, group = "Nat Geo") %>%
+  addCircleMarkers(data = facilities.spatial, popup = ~popup, color = ~pal(POPL_TYPE), stroke = 0, fillOpacity = 1, radius = 4, group = "Facilities") %>%
+  addLayersControl(
+    baseGroups = c("Basic", "Nat Geo"),
+    overlayGroups= c("Facilities"),
+    options = layersControlOptions(collapsed = FALSE)
+  )     
+```

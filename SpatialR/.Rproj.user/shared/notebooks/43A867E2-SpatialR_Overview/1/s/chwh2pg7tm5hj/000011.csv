@@ -1,0 +1,4 @@
+"0","ggplot() +"
+"0","  geom_sf(data = districts, aes(fill = Dist))+"
+"0","  geom_sf(data = facilities.spatial, aes(col = POPL_TYPE), show.legend = ""point"") +"
+"0","  guides(fill = guide_legend(override.aes = list(colour = NA)))"

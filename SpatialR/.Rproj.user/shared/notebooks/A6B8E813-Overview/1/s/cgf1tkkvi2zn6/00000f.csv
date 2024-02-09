@@ -1,0 +1,4 @@
+"0","facilities.spatial <- facilities.points %>% #projecting the table as an sf and setting the coordinate system"
+"0","  st_as_sf(coords = c(""Lon"",""Lat"")) %>% "
+"0","  st_set_crs(value = 4326) "
+"0",""
